@@ -8,6 +8,7 @@ History
 ---------
 
 08/24/2013 - Initial version
+08/30/2013 - Enclose the folder with quotes if it contains at least one space character
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -29,7 +30,7 @@ static LPCTSTR STR_RESET_FN      = _TEXT("resetperm.bat");
 static stringT g_Cmd;
 
 //-------------------------------------------------------------------------
-bool GetFolder(
+static bool GetFolder(
     HWND hOwner,
     LPCTSTR szCaption,
     stringT &folderpath)
@@ -99,6 +100,16 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
 
   stringT folder = Path;
 
+  // Add the wildcard mask
+  folder += _TEXT("\\*");
+
+  // Quote the folder if needed
+  if (folder.find(_T(' ')) != stringT::npos)
+  {
+    folder = _TEXT("\"") + folder;
+    folder += _TEXT("\"");
+  }
+
   cmd.clear();
 
   if (bTakeOwn)
@@ -107,12 +118,12 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
     if (bRecurse)
       cmd += _TEXT(" /r ");
     cmd += _TEXT(" /f ");
-    cmd += folder + _TEXT("\\*");
+    cmd += folder;
     cmd += _TEXT("\r\n");
   }
 
   cmd += _TEXT("icacls ");
-  cmd += folder + _TEXT("\\*");
+  cmd += folder;
   if (bRecurse)
     cmd += _TEXT(" /T ");
 
