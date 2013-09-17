@@ -9,6 +9,8 @@ History
 
 08/24/2013 - Initial version
 08/30/2013 - Enclose the folder with quotes if it contains at least one space character
+09/17/2013 - Added "Reset files permission" as a optional action
+           - Added "Reset hidden and system files"
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -88,6 +90,20 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
                       0, 
                       0) == BST_CHECKED;
 
+  bool bResetPerm = SendDlgItemMessage(
+    hDlg, 
+    IDCHK_RESETPERM, 
+    BM_GETCHECK, 
+    0, 
+    0) == BST_CHECKED;
+
+  bool bRmHidSys = SendDlgItemMessage(
+    hDlg, 
+    IDCHK_RM_HS, 
+    BM_GETCHECK, 
+    0, 
+    0) == BST_CHECKED;
+
   bool bTakeOwn = SendDlgItemMessage(
                       hDlg, 
                       IDCHK_TAKEOWN, 
@@ -122,12 +138,26 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
     cmd += _TEXT("\r\n");
   }
 
-  cmd += _TEXT("icacls ");
-  cmd += folder;
-  if (bRecurse)
-    cmd += _TEXT(" /T ");
+  if (bResetPerm)
+  {
+    cmd += _TEXT("icacls ");
+    cmd += folder;
+    if (bRecurse)
+      cmd += _TEXT(" /T ");
 
-  cmd += _TEXT(" /Q /C /RESET\r\n");
+    cmd += _TEXT(" /Q /C /RESET\r\n");
+  }
+
+  if (bRmHidSys)
+  {
+    cmd += _TEXT("attrib");
+    if (bRecurse)
+      cmd += _TEXT(" /s ");
+    cmd += _TEXT(" -h -s ");
+    cmd += folder;
+    cmd += _TEXT("\r\n");
+  }
+
   cmd += _TEXT("pause\r\n");
 
   SetDlgItemText(hDlg, IDTXT_COMMAND, cmd.c_str());
@@ -159,7 +189,7 @@ bool ExecuteCommand(HWND hWndOwn, LPCTSTR Cmd)
 }
 
 //-------------------------------------------------------------------------
-static INT_PTR CALLBACK DialogProc(
+static INT_PTR CALLBACK MainDialogProc(
 	  HWND hDlg, 
 	  UINT message, 
 	  WPARAM wParam, 
@@ -169,6 +199,13 @@ static INT_PTR CALLBACK DialogProc(
 	{
   	case WM_INITDIALOG:
     {
+      SendDlgItemMessage(
+        hDlg, 
+        IDCHK_RESETPERM, 
+        BM_SETCHECK, 
+        BST_CHECKED,
+        0);
+
       SendDlgItemMessage(
         hDlg, 
         IDCHK_RECURSE, 
@@ -194,6 +231,8 @@ static INT_PTR CALLBACK DialogProc(
 		  {
         case IDCHK_RECURSE:
         case IDCHK_TAKEOWN:
+        case IDCHK_RESETPERM:
+        case IDCHK_RM_HS:
         {
           if (wmEvent == BN_CLICKED)
           {
@@ -257,5 +296,5 @@ int APIENTRY _tWinMain(
 		hInstance, 
 		MAKEINTRESOURCE(IDD_DIALOG1), 
 		NULL,
-		DialogProc);
+		MainDialogProc);
 }
