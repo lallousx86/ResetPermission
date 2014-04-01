@@ -11,6 +11,7 @@ History
 08/30/2013 - Enclose the folder with quotes if it contains at least one space character
 09/17/2013 - Added "Reset files permission" as a optional action
            - Added "Reset hidden and system files"
+03/31/2014 - Fixed double backslash when folder is root
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -117,7 +118,10 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
   stringT folder = Path;
 
   // Add the wildcard mask
-  folder += _TEXT("\\*");
+  if (*folder.rbegin() != TCHAR('\\'))
+    folder += _TEXT("\\");
+
+  folder += _TEXT("*");
 
   // Quote the folder if needed
   if (folder.find(_T(' ')) != stringT::npos)
@@ -153,6 +157,7 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
     cmd += _TEXT("attrib");
     if (bRecurse)
       cmd += _TEXT(" /s ");
+
     cmd += _TEXT(" -h -s ");
     cmd += folder;
     cmd += _TEXT("\r\n");
