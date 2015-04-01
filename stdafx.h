@@ -20,4 +20,11 @@
 #include <shellapi.h>
 #include <ShlObj.h>
 
-// TODO: reference additional headers your program requires here
+#include "ResetPermission.h"
+
+//-------------------------------------------------------------------------
+#ifdef _UNICODE
+    #define stringT std::wstring
+#else
+    #define stringT std::string
+#endif
