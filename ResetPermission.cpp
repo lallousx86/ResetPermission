@@ -10,9 +10,10 @@ History
 08/24/2013 - Initial version
 08/30/2013 - Enclose the folder with quotes if it contains at least one space character
 09/17/2013 - Added "Reset files permission" as a optional action
-- Added "Reset hidden and system files"
+           - Added "Reset hidden and system files"
 03/31/2014 - Fixed double backslash when folder is root
 01/08/2014 - Added "Do not follow symbolic links" option
+03/31/2015 - Allow editing of the generated command textbox
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -31,7 +32,6 @@ static HINSTANCE g_hInstance;
 static LPCTSTR STR_SELECT_FOLDER = TEXT("Please select a folder");
 static LPCTSTR STR_ERROR = _TEXT("Error");
 static LPCTSTR STR_RESET_FN = _TEXT("resetperm.bat");
-static stringT g_Cmd;
 
 //-------------------------------------------------------------------------
 static bool GetFolder(
@@ -83,7 +83,7 @@ static INT_PTR CALLBACK AboutDlgProc(
 }
 
 //-------------------------------------------------------------------------
-static void UpdateCommandText(HWND hDlg, stringT &cmd)
+static void UpdateCommandText(HWND hDlg)
 {
     bool bRecurse = SendDlgItemMessage(
         hDlg,
@@ -139,7 +139,7 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
         folder += _TEXT("\"");
     }
 
-    cmd.clear();
+    stringT cmd;
 
     if (bTakeOwn)
     {
@@ -175,37 +175,57 @@ static void UpdateCommandText(HWND hDlg, stringT &cmd)
     }
 
     cmd += _TEXT("pause\r\n");
-
     SetDlgItemText(hDlg, IDTXT_COMMAND, cmd.c_str());
 }
 
 //-------------------------------------------------------------------------
-bool ExecuteCommand(HWND hWndOwn, LPCTSTR Cmd)
+static void GetCommandWindowText(HWND hDlg, stringT &Cmd)
 {
-    TCHAR CmdFn[MAX_PATH * 2];
-    if (GetTempPath(_countof(CmdFn), CmdFn) == 0)
+    HWND hwndCtrl = GetDlgItem(hDlg, IDTXT_COMMAND);
+    int len = GetWindowTextLength(hwndCtrl);
+
+    TCHAR *szCmd = new TCHAR[len + 1];
+
+    GetWindowText(hwndCtrl, szCmd, len);
+
+    Cmd = szCmd;
+    delete[] szCmd;
+}
+
+//-------------------------------------------------------------------------
+static bool ExecuteCommand(HWND hWndOwn)
+{
+    // Make temp file name
+    TCHAR CmdFileName[MAX_PATH * 2];
+    if (GetTempPath(_countof(CmdFileName), CmdFileName) == 0)
     {
-        if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFn, _countof(CmdFn)) == 0)
+        if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFileName, _countof(CmdFileName)) == 0)
             return false;
     }
 
-    if (CmdFn[_tcslen(CmdFn) - 1] != TCHAR('\\'))
-        _tcsncat_s(CmdFn, _TEXT("\\"), _countof(CmdFn));
+    if (CmdFileName[_tcslen(CmdFileName) - 1] != TCHAR('\\'))
+        _tcsncat_s(CmdFileName, _TEXT("\\"), _countof(CmdFileName));
 
-    _tcsncat_s(CmdFn, STR_RESET_FN, _countof(CmdFn));
+    _tcsncat_s(CmdFileName, STR_RESET_FN, _countof(CmdFileName));
 
+    // Write temp file
     FILE *fp;
-    if (_tfopen_s(&fp, CmdFn, _TEXT("w")) != 0)
+    if (_tfopen_s(&fp, CmdFileName, _TEXT("w")) != 0)
         return false;
 
-    _ftprintf(fp, _TEXT("%s\n"), Cmd);
+	stringT Cmd;
+	GetCommandWindowText(hWndOwn, Cmd);
+    //SetDlgItemText(hDlg, IDTXT_COMMAND, cmd.c_str());
+
+    _ftprintf(fp, _TEXT("%s\n"), Cmd.c_str());
     fclose(fp);
 
+    // Execute the temp file
     return SUCCEEDED(
         ShellExecute(
         hWndOwn,
         _TEXT("open"),
-        CmdFn,
+        CmdFileName,
         NULL,
         NULL,
         SW_SHOW)
@@ -248,7 +268,7 @@ static INT_PTR CALLBACK MainDialogProc(
             SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)t);
     #ifdef _DEBUG
             SetDlgItemText(hDlg, IDTXT_FOLDER, _TEXT("C:\\Temp\\perm"));
-            UpdateCommandText(hDlg, g_Cmd);
+            UpdateCommandText(hDlg);
     #endif
             return (INT_PTR)TRUE;
         }
@@ -268,7 +288,7 @@ static INT_PTR CALLBACK MainDialogProc(
                 {
                     if (wmEvent == BN_CLICKED)
                     {
-                        UpdateCommandText(hDlg, g_Cmd);
+                        UpdateCommandText(hDlg);
                         return TRUE;
                     }
                     break;
@@ -285,21 +305,23 @@ static INT_PTR CALLBACK MainDialogProc(
                 case IDBTN_CHOOSE_FOLDER:
                 {
                     stringT out;
-                    GetFolder(hDlg, STR_SELECT_FOLDER, out);
-                    SetDlgItemText(hDlg, IDTXT_FOLDER, out.c_str());
-
-                    UpdateCommandText(hDlg, g_Cmd);
+					if (GetFolder(hDlg, STR_SELECT_FOLDER, out))
+					{
+						SetDlgItemText(hDlg, IDTXT_FOLDER, out.c_str());
+						UpdateCommandText(hDlg);
+					}
                     return TRUE;
                 }
                 case IDOK:
                 {
+                    // Get the selected folder value
                     UINT Len = SendDlgItemMessage(hDlg, IDTXT_FOLDER, WM_GETTEXTLENGTH, 0, 0);
                     if (Len == 0)
                     {
                         MessageBox(hDlg, STR_SELECT_FOLDER, STR_ERROR, MB_OK | MB_ICONERROR);
                         return TRUE;
                     }
-                    ExecuteCommand(hDlg, g_Cmd.c_str());
+                    ExecuteCommand(hDlg);
                     return TRUE;
                 }
             }
