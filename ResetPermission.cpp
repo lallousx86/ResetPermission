@@ -15,6 +15,7 @@ History
 01/08/2014 - Added "Do not follow symbolic links" option
 03/31/2015 - Allow editing of the generated command textbox
            - Added "More actions" to add Explorer shell context menu
+11/03/2015 - Added /SKIPSL switch to takeown.exe
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -158,6 +159,9 @@ class ResetPermissionDialog
             cmd += _TEXT("takeown");
             if (bRecurse)
                 cmd += _TEXT(" /r ");
+
+            if (bDontFollowLinks)
+                cmd += _TEXT(" /SKIPSL ");
 
             cmd += _TEXT(" /f ");
             cmd += folder;
