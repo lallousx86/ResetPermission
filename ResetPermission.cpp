@@ -16,6 +16,8 @@ History
 03/31/2015 - Allow editing of the generated command textbox
            - Added "More actions" to add Explorer shell context menu
 11/03/2015 - Added /SKIPSL switch to takeown.exe
+11/15/2015 - Added HELP button to redirect to blog entry
+           - Added warning when attempting to change permission of a root folder
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -29,6 +31,12 @@ static LPCTSTR STR_HKCR_CTXMENU_BASE = TEXT("\"HKCR\\Folder\\shell\\Reset Permis
 static LPCTSTR STR_HKCR_CTXMENU_CMD  = TEXT("\\command");
 static LPCTSTR STR_CMD_PAUSE         = TEXT("pause\r\n");
 static LPCTSTR STR_NEWLINE           = TEXT("\r\n");
+static LPCTSTR STR_WARNING           = _TEXT("Warning!");
+static LPCTSTR STR_ROOT_WARNING =
+        _TEXT("You are about to change the permission of a root folder!\n")
+        _TEXT("This is a **DANGEROUS** operation! It is better to choose a specific folder instead!\n\n")
+        _TEXT("!! If you choose to proceed then you might render your system unstable !!\n\n")
+        _TEXT("Are you sure you want to continue?");
 
 //-------------------------------------------------------------------------
 class ResetPermissionDialog
@@ -46,7 +54,7 @@ class ResetPermissionDialog
         BROWSEINFO bi;
         memset(&bi, 0, sizeof(bi));
 
-        bi.ulFlags = BIF_EDITBOX | BIF_VALIDATE | BIF_RETURNONLYFSDIRS;
+        bi.ulFlags = BIF_EDITBOX | BIF_VALIDATE | BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
         bi.hwndOwner = hOwner;
         bi.lpszTitle = szCaption;
 
@@ -132,12 +140,9 @@ class ResetPermissionDialog
             0) == BST_CHECKED;
 
 
-        TCHAR Path[MAX_PATH * 4];
-        UINT len = GetDlgItemText(hDlg, IDTXT_FOLDER, Path, _countof(Path));
-        if (len == 0)
+        stringT folder;
+        if (GetFolderText(folder) == 0)
             return;
-
-        stringT folder = Path;
 
         // Add the wildcard mask
         if (*folder.rbegin() != TCHAR('\\'))
@@ -153,7 +158,15 @@ class ResetPermissionDialog
         }
 
         stringT cmd;
+        LPCTSTR TempScript = GenerateTempBatchFileName();
+        if (TempScript != nullptr)
+        {
+            cmd += _TEXT("REM Temp script location: ");
+            cmd += TempScript;
+            cmd += STR_NEWLINE;
+        }
 
+        // Form takeown.exe command
         if (bTakeOwn)
         {
             cmd += _TEXT("takeown");
@@ -168,6 +181,7 @@ class ResetPermissionDialog
             cmd += STR_NEWLINE;
         }
 
+        // Form icacls.exe command
         if (bResetPerm)
         {
             cmd += _TEXT("icacls ");
@@ -180,6 +194,7 @@ class ResetPermissionDialog
             cmd += _TEXT(" /Q /C /RESET\r\n");
         }
 
+        // Form attribute.exe command
         if (bRmHidSys)
         {
             cmd += _TEXT("attrib");
@@ -191,8 +206,10 @@ class ResetPermissionDialog
             cmd += STR_NEWLINE;
         }
 
+        // Always add a pause
         cmd += STR_CMD_PAUSE;
 
+        // Update the 
         SetCommandWindowText(cmd.c_str());
     }
 
@@ -215,7 +232,7 @@ class ResetPermissionDialog
         bool bOk = GetLastError() == NO_ERROR;
 
         Cmd = szCmd;
-        delete[] szCmd;
+        delete [] szCmd;
 
         return bOk;
     }
@@ -224,17 +241,22 @@ class ResetPermissionDialog
     static LPCTSTR GenerateTempBatchFileName()
     {
         // Make temp file name
-        static TCHAR CmdFileName[MAX_PATH * 2];
-        if (GetTempPath(_countof(CmdFileName), CmdFileName) == 0)
+        static TCHAR CmdFileName[MAX_PATH * 2] = { 0 };
+
+        // Compute if it was not already computed
+        if (CmdFileName[0] == _TCHAR('\0'))
         {
-            if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFileName, _countof(CmdFileName)) == 0)
-                return false;
+            if (GetTempPath(_countof(CmdFileName), CmdFileName) == 0)
+            {
+                if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFileName, _countof(CmdFileName)) == 0)
+                    return nullptr;
+            }
+
+            if (CmdFileName[_tcslen(CmdFileName) - 1] != TCHAR('\\'))
+                _tcsncat_s(CmdFileName, _TEXT("\\"), _countof(CmdFileName));
+
+            _tcsncat_s(CmdFileName, STR_RESET_FN, _countof(CmdFileName));
         }
-
-        if (CmdFileName[_tcslen(CmdFileName) - 1] != TCHAR('\\'))
-            _tcsncat_s(CmdFileName, _TEXT("\\"), _countof(CmdFileName));
-
-        _tcsncat_s(CmdFileName, STR_RESET_FN, _countof(CmdFileName));
 
         return CmdFileName;
     }
@@ -243,6 +265,16 @@ class ResetPermissionDialog
     // Execute the command typed in the command textbox
     static bool ExecuteCommand()
     {
+        // Warn if this is a root folder
+        stringT Path;
+        if (    GetFolderText(Path)
+             && Path.length() == 3 && Path[1] == _TCHAR(':') && Path[2] == _TCHAR('\\'))
+        {
+            if (MessageBox(hDlg, STR_ROOT_WARNING, STR_WARNING, MB_YESNO | MB_ICONWARNING) == IDNO)
+                return false;
+        }
+
+        // Delete previous batch file
         LPCTSTR CmdFileName = GenerateTempBatchFileName();
         DeleteFile(CmdFileName);
 
@@ -341,6 +373,7 @@ class ResetPermissionDialog
         if (bQuoted)
             ++szCmdLine;
 
+        // Skip application name
         szCmdLine += _tcslen(AppName);
         if (bQuoted)
             ++szCmdLine;
@@ -399,11 +432,13 @@ class ResetPermissionDialog
     #endif
                 if (Arg != NULL)
                     UpdateCommandText();
-                return (INT_PTR)TRUE;
+
+                return TRUE;
             }
 
             case WM_MENUCOMMAND:
                 break;
+
             case WM_COMMAND:
             {
     #ifdef _DEBUG
@@ -411,11 +446,14 @@ class ResetPermissionDialog
                 _sntprintf_s(b, _countof(b), _TEXT("WM_COMMAND: wmParam=%08X lParam=%08X\n"), wParam, lParam);
                 OutputDebugString(b);
     #endif
-                UINT wmId = LOWORD(wParam);
+                UINT wmId    = LOWORD(wParam);
                 UINT wmEvent = HIWORD(wParam);
 
                 switch (wmId)
                 {
+                    //
+                    // Handle checkboxes
+                    //
                     case IDCHK_RECURSE:
                     case IDCHK_DONTFOLLOWLINKS:
                     case IDCHK_TAKEOWN:
@@ -429,12 +467,18 @@ class ResetPermissionDialog
                         }
                         break;
                     }
+                    //
+                    // Handle context menu
+                    //
                     case IDM_ADDTOEXPLORERFOLDERRIGHT:
                     case IDM_REMOVEFROMEXPLORERFOLDERCONTEXTMENU:
                     {
                         AddToExplorerContextMenu(wmId == IDM_ADDTOEXPLORERFOLDERRIGHT);
                         break;
                     }
+                    //
+                    // About box
+                    //
                     case IDBTN_ABOUT:
                     {
                         DialogBox(
@@ -445,6 +489,9 @@ class ResetPermissionDialog
 
                         return TRUE;
                     }
+                    //
+                    // Choose folder
+                    //
                     case IDBTN_CHOOSE_FOLDER:
                     {
                         stringT out;
@@ -455,14 +502,33 @@ class ResetPermissionDialog
                         }
                         return TRUE;
                     }
+                    //
+                    // Trigger the actions menu
+                    //
                     case IDBTN_MORE_ACTIONS:
                     {
                         ShowMoreActionsMenu();
                         return TRUE;
                     }
+                    //
+                    // GO button
+                    //
                     case IDOK:
                     {
                         ExecuteCommand();
+                        return TRUE;
+                    }
+                    // HELP button
+                    case IDBTN_HELP:
+                    {
+                        ShellExecute(
+                            hDlg,
+                            _TEXT("open"),
+                            _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/"),
+                            nullptr,
+                            nullptr,
+                            SW_SHOW);
+
                         return TRUE;
                     }
                 }
@@ -471,23 +537,42 @@ class ResetPermissionDialog
             // Close dialog
             case WM_CLOSE:
             {
-                EndDialog(hDlg, 0);
+                EndDialog(hDlg, IDOK);
                 return TRUE;
             }
         }
         return FALSE;
     }
 public:
-    static void ShowDialog(HINSTANCE hInst)
+    static INT_PTR ShowDialog(HINSTANCE hInst)
     {
         GetModuleFileName(NULL, AppName, _countof(AppName));
 
         hInstance = hInst;
-        DialogBox(
+        return DialogBox(
             hInstance,
             MAKEINTRESOURCE(IDD_DIALOG1),
             NULL,
             MainDialogProc);
+    }
+
+    static bool GetFolderText(stringT &Folder)
+    {
+        TCHAR Path[MAX_PATH * 4];
+        UINT len = GetDlgItemText(
+            hDlg,
+            IDTXT_FOLDER,
+            Path,
+            _countof(Path));
+        if (len == 0)
+        {
+            return false;
+        }
+        else
+        {
+            Folder = Path;
+            return true;
+        }
     }
 
     static void SetFolderText(LPCTSTR Value)
@@ -496,6 +581,7 @@ public:
     }
 };
 
+//-------------------------------------------------------------------------
 TCHAR ResetPermissionDialog::AppName[MAX_PATH * 2];
 HINSTANCE ResetPermissionDialog::hInstance;
 HWND ResetPermissionDialog::hDlg = NULL;
@@ -507,5 +593,6 @@ int APIENTRY _tWinMain(
     LPTSTR    lpCmdLine,
     int       nCmdShow)
 {
-    ResetPermissionDialog::ShowDialog(hInstance);
+    ::OleInitialize(NULL);
+    return (int)ResetPermissionDialog::ShowDialog(hInstance);
 }
