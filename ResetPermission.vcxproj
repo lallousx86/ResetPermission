@@ -97,6 +97,13 @@
     <Image Include="ResetPermission.ico" />
     <Image Include="small.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="BIN\archive\1.0.2.zip" />
+    <None Include="BIN\archive\1.0.3.zip" />
+    <None Include="BIN\archive\1.0.4.zip" />
+    <None Include="BIN\archive\1.1.0.zip" />
+    <None Include="BIN\ResetPermission.zip" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
