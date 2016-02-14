@@ -16,21 +16,30 @@ History
 03/31/2015 - Allow editing of the generated command textbox
            - Added "More actions" to add Explorer shell context menu
 11/03/2015 - Added /SKIPSL switch to takeown.exe
-11/15/2015 - Added HELP button to redirect to blog entry
+
+11/15/2015 - v1.1.3
+           - Added HELP button to redirect to blog entry
            - Added warning when attempting to change permission of a root folder
+
+02/13/2016 - v1.1.4
+           - Minor code changes
+           - Update the console window title when the commands execute
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
 #include "stdafx.h"
 
 //-------------------------------------------------------------------------
+static LPCTSTR STR_HELP_URL          = _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/");
 static LPCTSTR STR_SELECT_FOLDER     = TEXT("Please select a folder");
 static LPCTSTR STR_ERROR             = TEXT("Error");
 static LPCTSTR STR_RESET_FN          = TEXT("resetperm.bat");
 static LPCTSTR STR_HKCR_CTXMENU_BASE = TEXT("\"HKCR\\Folder\\shell\\Reset Permission");
 static LPCTSTR STR_HKCR_CTXMENU_CMD  = TEXT("\\command");
-static LPCTSTR STR_CMD_PAUSE         = TEXT("pause\r\n");
-static LPCTSTR STR_NEWLINE           = TEXT("\r\n");
+static stringT STR_CMD_PAUSE         = TEXT("pause\r\n");
+static stringT STR_NEWLINE           = TEXT("\r\n");
+static stringT STR_NEWLINE2          = STR_NEWLINE + STR_NEWLINE;
+
 static LPCTSTR STR_WARNING           = _TEXT("Warning!");
 static LPCTSTR STR_ROOT_WARNING =
         _TEXT("You are about to change the permission of a root folder!\n")
@@ -152,23 +161,22 @@ class ResetPermissionDialog
 
         // Quote the folder if needed
         if (folder.find(_T(' ')) != stringT::npos)
-        {
-            folder = _TEXT("\"") + folder;
-            folder += _TEXT("\"");
-        }
+            folder = _TEXT("\"") + folder + _TEXT("\"");
 
         stringT cmd;
         LPCTSTR TempScript = GenerateTempBatchFileName();
         if (TempScript != nullptr)
         {
             cmd += _TEXT("REM Temp script location: ");
-            cmd += TempScript;
-            cmd += STR_NEWLINE;
+            cmd += TempScript + STR_NEWLINE2;
         }
 
         // Form takeown.exe command
         if (bTakeOwn)
         {
+            // Update the command prompt's title
+            cmd += _TEXT("TITLE taking ownership of folder: ") + folder + STR_NEWLINE;
+
             cmd += _TEXT("takeown");
             if (bRecurse)
                 cmd += _TEXT(" /r ");
@@ -176,34 +184,35 @@ class ResetPermissionDialog
             if (bDontFollowLinks)
                 cmd += _TEXT(" /SKIPSL ");
 
-            cmd += _TEXT(" /f ");
-            cmd += folder;
-            cmd += STR_NEWLINE;
+            cmd += _TEXT(" /f ") + folder + STR_NEWLINE2;
         }
 
         // Form icacls.exe command
         if (bResetPerm)
         {
-            cmd += _TEXT("icacls ");
-            cmd += folder;
+            // Update the command prompt's title
+            cmd += _TEXT("TITLE Taking ownership of folder: ") + folder + STR_NEWLINE;
+
+            cmd += _TEXT("icacls ") + folder;
             if (bRecurse)
                 cmd += _TEXT(" /T ");
             if (bDontFollowLinks)
                 cmd += _TEXT(" /L ");
 
-            cmd += _TEXT(" /Q /C /RESET\r\n");
+            cmd += _TEXT(" /Q /C /RESET") + STR_NEWLINE2;
         }
 
         // Form attribute.exe command
         if (bRmHidSys)
         {
+            // Update the command prompt's title
+            cmd += _TEXT("TITLE Changing files attributes in folder: ") + folder + STR_NEWLINE;
+
             cmd += _TEXT("attrib");
             if (bRecurse)
                 cmd += _TEXT(" /s ");
 
-            cmd += _TEXT(" -h -s ");
-            cmd += folder;
-            cmd += STR_NEWLINE;
+            cmd += _TEXT(" -h -s ") + folder + STR_NEWLINE2;
         }
 
         // Always add a pause
@@ -282,7 +291,14 @@ class ResetPermissionDialog
         FILE *fp;
         if (_tfopen_s(&fp, CmdFileName, _TEXT("w")) != 0)
         {
-            MessageBox(hDlg, TEXT("Failed to write batch file"), TEXT("Error"), MB_OK | MB_ICONERROR);
+            stringT err_msg = TEXT("Failed to write batch file to: ");
+            err_msg += CmdFileName;
+
+            MessageBox(
+                hDlg, 
+                err_msg.c_str(), 
+                TEXT("Error"), 
+                MB_OK | MB_ICONERROR);
             return false;
         }
 
@@ -427,8 +443,8 @@ class ResetPermissionDialog
                 if (Arg != NULL)
                     SetFolderText(Arg);
     #ifdef _DEBUG
-                //else
-                //    SetFolderText(_TEXT("C:\\Temp\\perm"));
+                else
+                    SetFolderText(_TEXT("C:\\Temp\\perm"));
     #endif
                 if (Arg != NULL)
                     UpdateCommandText();
@@ -443,7 +459,12 @@ class ResetPermissionDialog
             {
     #ifdef _DEBUG
                 TCHAR b[1024];
-                _sntprintf_s(b, _countof(b), _TEXT("WM_COMMAND: wmParam=%08X lParam=%08X\n"), wParam, lParam);
+                _sntprintf_s(
+                    b, 
+                    _countof(b), 
+                    _TEXT("WM_COMMAND: wmParam=%08X lParam=%08X\n"), 
+                    wParam, 
+                    lParam);
                 OutputDebugString(b);
     #endif
                 UINT wmId    = LOWORD(wParam);
@@ -524,7 +545,7 @@ class ResetPermissionDialog
                         ShellExecute(
                             hDlg,
                             _TEXT("open"),
-                            _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/"),
+                            STR_HELP_URL,
                             nullptr,
                             nullptr,
                             SW_SHOW);
@@ -582,6 +603,7 @@ public:
 };
 
 //-------------------------------------------------------------------------
+// Class variables
 TCHAR ResetPermissionDialog::AppName[MAX_PATH * 2];
 HINSTANCE ResetPermissionDialog::hInstance;
 HWND ResetPermissionDialog::hDlg = NULL;
