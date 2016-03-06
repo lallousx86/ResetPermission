@@ -7,20 +7,27 @@
 
 #include "targetver.h"
 
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
-// Windows Header Files:
-#include <windows.h>
-
-// C RunTime Header Files
 #include <stdlib.h>
 #include <malloc.h>
 #include <memory.h>
-#include <tchar.h>
 #include <string>
-#include <shellapi.h>
-#include <ShlObj.h>
 
-#include "ResetPermission.h"
+// Exclude rarely-used stuff from Windows headers
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+// C RunTime Header Files
+#pragma warning(push)
+#pragma warning(disable: 4091)
+#include <ShlObj.h>
+#pragma warning(pop)
+
+#include <shellapi.h>
+#include <CommDlg.h>
+#include <tchar.h>
+
+#include "resource.h"
+//#include "ResetPermission.h"
 
 //-------------------------------------------------------------------------
 #ifdef _UNICODE
