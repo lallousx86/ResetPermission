@@ -30,6 +30,10 @@ History
            - Added the Advanced button
            - Added Backup/Restore permissions
 
+06/14/2016 - v1.1.6
+           - bugfix: Add/Remove from the Explorer folder context menu did not work unless a folder was selected.
+                     Fix: No folder selection is needed for that action.
+
 TODO:
 ------
 - Check if the volume is NTFS and skip commands accordingly
@@ -44,6 +48,7 @@ TODO:
 static LPCTSTR STR_HELP_URL          = _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/");
 static LPCTSTR STR_SELECT_FOLDER     = TEXT("Please select a folder");
 static LPCTSTR STR_ERROR             = TEXT("Error");
+static LPCTSTR STR_CONFIRMATION      = TEXT("Confirmation");
 static LPCTSTR STR_RESET_FN          = TEXT("resetperm.bat");
 static LPCTSTR STR_HKCR_CTXMENU_BASE = TEXT("\"HKCR\\Folder\\shell\\Reset Permission");
 static LPCTSTR STR_HKCR_CTXMENU_CMD  = TEXT("\\command");
@@ -59,8 +64,14 @@ static LPCTSTR STR_ROOT_WARNING      =
         _TEXT("!! If you choose to proceed then you might render your system unstable !!\n\n")
         _TEXT("Are you sure you want to continue?");
 
+static LPCTSTR STR_ADDREM_CTXMENU_CONFIRM =
+        _TEXT("You are about to add or remove the ResetPermission tool to/from the Windows Explorer folder context menu!\n")
+        _TEXT("\n")
+        _TEXT("Are you sure you want to continue?");
+
 static LPCTSTR STR_TITLE_BACKUP_PERMS = 
         _TEXT("Pick the file you wish to backup the permissions into");
+
 static LPCTSTR STR_TITLE_RESTORE_PERMS = 
         _TEXT("Pick the permissions backup file you wish to restore from");
 
@@ -479,6 +490,12 @@ void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
 
     cmd += STR_CMD_PAUSE;
     SetCommandWindowText(cmd.c_str());
+
+    if (MessageBox(hDlg, STR_ADDREM_CTXMENU_CONFIRM, STR_CONFIRMATION, MB_YESNO | MB_ICONQUESTION) == IDNO)
+        return;
+    
+    // Execute the command disregarding the input folder (not applicable)
+    ExecuteCommand(false);
 }
 
 //-------------------------------------------------------------------------
@@ -529,9 +546,10 @@ void ResetPermissionDialog::BackRestorePermissions(bool bBackup)
 
 //-------------------------------------------------------------------------
 // Execute the command typed in the command textbox
-bool ResetPermissionDialog::ExecuteCommand()
+bool ResetPermissionDialog::ExecuteCommand(bool bValidateFolder)
 {
     // Warn if this is a root folder
+    if (bValidateFolder)
     {
         stringT Path;
         if (!GetFolderText(Path, true, false, false))
@@ -584,7 +602,11 @@ bool ResetPermissionDialog::ExecuteCommand()
 }
 
 //-------------------------------------------------------------------------
-INT_PTR CALLBACK ResetPermissionDialog::AboutDlgProc(HWND hAboutDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK ResetPermissionDialog::AboutDlgProc(
+    HWND hAboutDlg, 
+    UINT message, 
+    WPARAM wParam, 
+    LPARAM lParam)
 {
     if (message == WM_INITDIALOG)
     {
@@ -732,7 +754,8 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
                 //
                 case IDOK:
                 {
-                    ExecuteCommand();
+                    // Validate the input folder and execute the command
+                    ExecuteCommand(true);
                     return TRUE;
                 }
                 // HELP button

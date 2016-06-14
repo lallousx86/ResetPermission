@@ -35,7 +35,7 @@ class ResetPermissionDialog
 
     static LPCTSTR GenerateTempBatchFileName();
 
-    static bool ExecuteCommand();
+    static bool ExecuteCommand(bool bValidateFolder);
 
     static void ShowPopupMenu(
         int IdMenu,
