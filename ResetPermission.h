@@ -5,17 +5,17 @@
 //-------------------------------------------------------------------------
 class ResetPermissionDialog
 {
-    static HINSTANCE hInstance;
-    static HWND hDlg;
-    static TCHAR AppName[MAX_PATH * 2];
+    HINSTANCE hInstance;
+    HWND hDlg;
+    TCHAR AppName[MAX_PATH * 2];
 
-    static bool bRecurse;
-    static bool bResetPerm;
-    static bool bRmHidSys;
-    static bool bTakeOwn;
-    static bool bDontFollowLinks;
+    bool bRecurse;
+    bool bResetPerm;
+    bool bRmHidSys;
+    bool bTakeOwn;
+    bool bDontFollowLinks;
 
-    static bool BrowseFolder(
+    bool BrowseFolder(
         HWND hOwner,
         LPCTSTR szCaption,
         stringT &folderpath);
@@ -27,34 +27,41 @@ class ResetPermissionDialog
         WPARAM wParam,
         LPARAM lParam);
 
-    static void SetCommandWindowText(LPCTSTR Str);
+    void SetCommandWindowText(LPCTSTR Str);
 
-    static void UpdateCommandText();
+    void UpdateCommandText();
 
-    static bool GetCommandWindowText(stringT &Cmd);
+    bool GetCommandWindowText(stringT &Cmd);
 
-    static LPCTSTR GenerateTempBatchFileName();
+    LPCTSTR GenerateTempBatchFileName();
 
-    static bool ExecuteCommand(bool bValidateFolder);
+    bool ExecuteCommand(stringT &Cmd);
+    bool ExecuteWindowCommand(bool bValidatePath);
 
-    static void ShowPopupMenu(
+    void ShowPopupMenu(
         int IdMenu,
         int IdBtnPos);
 
-    static void AddToExplorerContextMenu(bool bAdd);
-    static void BackRestorePermissions(bool bBackup);
+    void AddToExplorerContextMenu(bool bAdd);
+    void BackRestorePermissions(bool bBackup);
 
-    static void UpdateCheckboxes(bool bGet);
+    void UpdateCheckboxes(bool bGet);
 
-    static LPCTSTR GetArgs();
+    LPCTSTR GetArgs();
 
-    static INT_PTR CALLBACK MainDialogProc(
+    static INT_PTR CALLBACK s_MainDialogProc(
         HWND hWnd,
         UINT message,
         WPARAM wParam,
         LPARAM lParam);
 
-    static bool BrowseFileName(
+    INT_PTR CALLBACK MainDialogProc(
+        HWND hWnd,
+        UINT message,
+        WPARAM wParam,
+        LPARAM lParam);
+
+    bool BrowseFileName(
         bool bSave,
         LPCTSTR Caption,
         LPCTSTR Extension,
@@ -64,12 +71,12 @@ class ResetPermissionDialog
 public:
     static INT_PTR ShowDialog(HINSTANCE hInst);
 
-    static bool GetFolderText(
+    bool GetFolderText(
         stringT &Folder,
         bool bWarnRoot,
         bool bAddWildCard,
         bool bQuoteIfNeeded);
 
-    static void SetFolderText(LPCTSTR Value);
-    static void InitCommand(stringT &cmd);
+    void SetFolderText(LPCTSTR Value);
+    void InitCommand(stringT &cmd);
 };

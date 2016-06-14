@@ -31,13 +31,14 @@ History
            - Added Backup/Restore permissions
 
 06/14/2016 - v1.1.6
+           - Made the dialog non-static
+           - Refactored the code
            - bugfix: Add/Remove from the Explorer folder context menu did not work unless a folder was selected.
                      Fix: No folder selection is needed for that action.
 
 TODO:
 ------
 - Check if the volume is NTFS and skip commands accordingly
-- Make the ResetPermissionDlg class non-static for the most part
 -------------------------------------------------------------------------*/
 
 //-------------------------------------------------------------------------
@@ -75,17 +76,6 @@ static LPCTSTR STR_TITLE_BACKUP_PERMS =
 static LPCTSTR STR_TITLE_RESTORE_PERMS = 
         _TEXT("Pick the permissions backup file you wish to restore from");
 
-
-//-------------------------------------------------------------------------
-// Class variables
-TCHAR ResetPermissionDialog::AppName[MAX_PATH * 2];
-HINSTANCE ResetPermissionDialog::hInstance;
-HWND ResetPermissionDialog::hDlg = NULL;
-bool ResetPermissionDialog::bRecurse = true;
-bool ResetPermissionDialog::bResetPerm = true;
-bool ResetPermissionDialog::bRmHidSys = false;
-bool ResetPermissionDialog::bTakeOwn = false;
-bool ResetPermissionDialog::bDontFollowLinks = true;
 
 //-------------------------------------------------------------------------
 bool ResetPermissionDialog::BrowseFolder(
@@ -306,6 +296,7 @@ bool ResetPermissionDialog::GetCommandWindowText(stringT &Cmd)
     return bOk;
 }
 
+//-------------------------------------------------------------------------
 void ResetPermissionDialog::SetCommandWindowText(LPCTSTR Str)
 {
     SetDlgItemText(hDlg, IDTXT_COMMAND, Str);
@@ -489,13 +480,13 @@ void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
     cmd += STR_NEWLINE;
 
     cmd += STR_CMD_PAUSE;
-    SetCommandWindowText(cmd.c_str());
 
+    // Confirm
     if (MessageBox(hDlg, STR_ADDREM_CTXMENU_CONFIRM, STR_CONFIRMATION, MB_YESNO | MB_ICONQUESTION) == IDNO)
         return;
     
-    // Execute the command disregarding the input folder (not applicable)
-    ExecuteCommand(false);
+    // Execute the command
+    ExecuteCommand(cmd);
 }
 
 //-------------------------------------------------------------------------
@@ -545,22 +536,13 @@ void ResetPermissionDialog::BackRestorePermissions(bool bBackup)
 }
 
 //-------------------------------------------------------------------------
-// Execute the command typed in the command textbox
-bool ResetPermissionDialog::ExecuteCommand(bool bValidateFolder)
+bool ResetPermissionDialog::ExecuteCommand(stringT &Cmd)
 {
-    // Warn if this is a root folder
-    if (bValidateFolder)
-    {
-        stringT Path;
-        if (!GetFolderText(Path, true, false, false))
-            return false;
-    }
-
-    // Delete previous batch file
+    // Delete the previous temp Batch file
     LPCTSTR CmdFileName = GenerateTempBatchFileName();
     DeleteFile(CmdFileName);
 
-    // Write temp file
+    // Write the temp Batch file
     FILE *fp;
     if (_tfopen_s(&fp, CmdFileName, _TEXT("w")) != 0)
     {
@@ -576,17 +558,6 @@ bool ResetPermissionDialog::ExecuteCommand(bool bValidateFolder)
         return false;
     }
 
-    stringT Cmd;
-    if (!GetCommandWindowText(Cmd))
-    {
-        MessageBox(
-            hDlg, 
-            TEXT("Failed to get command text"), 
-            TEXT("Error"), 
-            MB_OK | MB_ICONERROR);
-        return false;
-    }
-
     _ftprintf(fp, _TEXT("%s\n"), Cmd.c_str());
     fclose(fp);
 
@@ -599,6 +570,34 @@ bool ResetPermissionDialog::ExecuteCommand(bool bValidateFolder)
             NULL,
             NULL,
             SW_SHOW));
+}
+
+//-------------------------------------------------------------------------
+// Execute the command typed in the command textbox
+bool ResetPermissionDialog::ExecuteWindowCommand(bool bValidateFolder)
+{
+    // Warn if this is a root folder
+    if (bValidateFolder)
+    {
+        stringT Path;
+        if (!GetFolderText(Path, true, false, false))
+            return false;
+    }
+
+    // Get the window command
+    stringT Cmd;
+    if (!GetCommandWindowText(Cmd))
+    {
+        MessageBox(
+            hDlg,
+            TEXT("Failed to get command text"),
+            TEXT("Error"),
+            MB_OK | MB_ICONERROR);
+        return false;
+    }
+
+    // Execute the command
+    return ExecuteCommand(Cmd);
 }
 
 //-------------------------------------------------------------------------
@@ -621,6 +620,45 @@ INT_PTR CALLBACK ResetPermissionDialog::AboutDlgProc(
 }
 
 //-------------------------------------------------------------------------
+INT_PTR CALLBACK ResetPermissionDialog::s_MainDialogProc(
+    HWND hWnd,
+    UINT message,
+    WPARAM wParam,
+    LPARAM lParam)
+{
+    ResetPermissionDialog *Dlg;
+
+    // Dialog initialized? Let's setup / remember the instance pointer
+    if (message == WM_INITDIALOG)
+    {
+        // Get the passed instance
+        Dlg = (ResetPermissionDialog *)lParam;
+
+        // Associate the dialog instance with the window's user data
+        SetWindowLongPtr(
+            hWnd, 
+            GWLP_USERDATA, 
+            LONG_PTR(Dlg));
+    }
+    // Extract the dialog instance from the window's data
+    else
+    {
+        Dlg = (ResetPermissionDialog *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    }
+
+    // Dispatch the message to this specific dialog instance
+    INT_PTR Ret = Dlg == nullptr ? FALSE : Dlg->MainDialogProc(hWnd, message, wParam, lParam);
+
+    if (message == WM_DESTROY)
+    {
+        // Delete the dialog instance
+        delete Dlg;
+    }
+
+    return Ret;
+}
+
+//-------------------------------------------------------------------------
 INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
     HWND hWnd, 
     UINT message, 
@@ -631,9 +669,15 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
     {
         case WM_INITDIALOG:
         {
-            ResetPermissionDialog::hDlg = hWnd;
+            hDlg = hWnd;
 
-            // Uses the initially hardcoded/defined variables states
+            // Set the initial states/configuration
+            bRecurse = true;
+            bResetPerm = true;
+            bRmHidSys = false;
+            bTakeOwn = false;
+            bDontFollowLinks = true;
+
             UpdateCheckboxes(false);
 
             HICON hIcon = LoadIcon(
@@ -755,7 +799,7 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
                 case IDOK:
                 {
                     // Validate the input folder and execute the command
-                    ExecuteCommand(true);
+                    ExecuteWindowCommand(true);
                     return TRUE;
                 }
                 // HELP button
@@ -786,14 +830,22 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
 //-------------------------------------------------------------------------
 INT_PTR ResetPermissionDialog::ShowDialog(HINSTANCE hInst)
 {
-    GetModuleFileName(NULL, AppName, _countof(AppName));
+    // Create new dialog instance
+    ResetPermissionDialog *Dlg = new ResetPermissionDialog();
 
-    hInstance = hInst;
-    return DialogBox(
-        hInstance,
+    // Get current program's full path
+    GetModuleFileName(
+        NULL,
+        Dlg->AppName,
+        _countof(Dlg->AppName));
+
+    Dlg->hInstance = hInst;
+    return DialogBoxParam(
+        hInst,
         MAKEINTRESOURCE(IDD_RESETPERMS),
         NULL,
-        MainDialogProc);
+        s_MainDialogProc,
+        LPARAM(Dlg));
 }
 
 //-------------------------------------------------------------------------
