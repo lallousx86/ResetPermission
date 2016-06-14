@@ -47,15 +47,15 @@ TODO:
 
 //-------------------------------------------------------------------------
 static LPCTSTR STR_HELP_URL          = _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/");
-static LPCTSTR STR_SELECT_FOLDER     = TEXT("Please select a folder");
-static LPCTSTR STR_ERROR             = TEXT("Error");
-static LPCTSTR STR_CONFIRMATION      = TEXT("Confirmation");
-static LPCTSTR STR_RESET_FN          = TEXT("resetperm.bat");
-static LPCTSTR STR_HKCR_CTXMENU_BASE = TEXT("\"HKCR\\Folder\\shell\\Reset Permission");
-static LPCTSTR STR_HKCR_CTXMENU_CMD  = TEXT("\\command");
-static stringT STR_CMD_PAUSE         = TEXT("pause\r\n");
-static LPCTSTR STR_CMD_ICACLS        = TEXT("icacls ");
-static stringT STR_NEWLINE           = TEXT("\r\n");
+static LPCTSTR STR_SELECT_FOLDER     = _TEXT("Please select a folder");
+static LPCTSTR STR_ERROR             = _TEXT("Error");
+static LPCTSTR STR_CONFIRMATION      = _TEXT("Confirmation");
+static LPCTSTR STR_RESET_FN          = _TEXT("resetperm.bat");
+static LPCTSTR STR_HKCR_CTXMENU_BASE = _TEXT("\"HKCR\\Folder\\shell\\Reset Permission");
+static LPCTSTR STR_HKCR_CTXMENU_CMD  = _TEXT("\\command");
+static stringT STR_CMD_PAUSE         = _TEXT("pause\r\n");
+static LPCTSTR STR_CMD_ICACLS        = _TEXT("icacls ");
+static stringT STR_NEWLINE           = _TEXT("\r\n");
 static stringT STR_NEWLINE2          = STR_NEWLINE + STR_NEWLINE;
 
 static LPCTSTR STR_WARNING           = _TEXT("Warning!");
@@ -76,6 +76,10 @@ static LPCTSTR STR_TITLE_BACKUP_PERMS =
 static LPCTSTR STR_TITLE_RESTORE_PERMS = 
         _TEXT("Pick the permissions backup file you wish to restore from");
 
+static LPCTSTR STR_CHECK_THE_BATCHOGRAPHY_BOOK =
+        _TEXT("REM -- Check out the book: Batchography - The Art of Batch Files Programming\r\n")
+        _TEXT("REM -- http://lallouslab.net/2016/05/10/batchography/\r\n")
+        _TEXT("\r\n");
 
 //-------------------------------------------------------------------------
 bool ResetPermissionDialog::BrowseFolder(
@@ -352,10 +356,12 @@ void ResetPermissionDialog::SetFolderText(LPCTSTR Value)
 //-------------------------------------------------------------------------
 void ResetPermissionDialog::InitCommand(stringT &cmd)
 {
+    cmd += STR_CHECK_THE_BATCHOGRAPHY_BOOK;
+
     LPCTSTR TempScript = GenerateTempBatchFileName();
     if (TempScript != nullptr)
     {
-        cmd += _TEXT("REM Temp script location: ");
+        cmd += _TEXT("REM -- Temp script location: ");
         cmd += TempScript + STR_NEWLINE2;
     }
 }
@@ -454,7 +460,10 @@ LPCTSTR ResetPermissionDialog::GenerateTempBatchFileName()
 //-------------------------------------------------------------------------
 void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
 {
-    stringT cmd = TEXT("reg ");
+    stringT cmd;
+    InitCommand(cmd);
+
+    cmd += TEXT("reg ");
 
     if (bAdd)
         cmd += TEXT("ADD ");
