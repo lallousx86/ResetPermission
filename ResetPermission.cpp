@@ -43,7 +43,6 @@ TODO:
 
 //-------------------------------------------------------------------------
 #include "stdafx.h"
-#include "ResetPermission.h"
 
 //-------------------------------------------------------------------------
 static LPCTSTR STR_HELP_URL          = _TEXT("http://lallouslab.net/2013/08/26/resetting-ntfs-files-permission-in-windows-graphical-utility/");
@@ -55,6 +54,9 @@ static LPCTSTR STR_HKCR_CTXMENU_BASE = _TEXT("\"HKCR\\Folder\\shell\\Reset Permi
 static LPCTSTR STR_HKCR_CTXMENU_CMD  = _TEXT("\\command");
 static stringT STR_CMD_PAUSE         = _TEXT("pause\r\n");
 static LPCTSTR STR_CMD_ICACLS        = _TEXT("icacls ");
+static LPCTSTR STR_CMD_TAKEOWN       = _TEXT("takeown");
+static LPCTSTR STR_CMD_ATTRIB        = _TEXT("attrib");
+static LPCTSTR STR_CMD_REG           = TEXT("reg");
 static stringT STR_NEWLINE           = _TEXT("\r\n");
 static stringT STR_NEWLINE2          = STR_NEWLINE + STR_NEWLINE;
 
@@ -385,7 +387,7 @@ void ResetPermissionDialog::UpdateCommandText()
         // Update the command prompt's title
         cmd += _TEXT("TITLE taking ownership of folder: ") + folder + STR_NEWLINE;
 
-        cmd += _TEXT("takeown");
+        cmd += STR_CMD_TAKEOWN;
         if (bRecurse)
             cmd += _TEXT(" /r ");
 
@@ -419,7 +421,7 @@ void ResetPermissionDialog::UpdateCommandText()
         // Update the command prompt's title
         cmd += _TEXT("TITLE Changing files attributes in folder: ") + folder + STR_NEWLINE;
 
-        cmd += _TEXT("attrib");
+        cmd += STR_CMD_ATTRIB;
         if (bRecurse)
             cmd += _TEXT(" /s ");
 
@@ -463,12 +465,12 @@ void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
     stringT cmd;
     InitCommand(cmd);
 
-    cmd += TEXT("reg ");
+    cmd += STR_CMD_REG;
 
     if (bAdd)
-        cmd += TEXT("ADD ");
+        cmd += TEXT(" ADD ");
     else
-        cmd += TEXT("DELETE ");
+        cmd += TEXT(" DELETE ");
 
     cmd += STR_HKCR_CTXMENU_BASE;
 

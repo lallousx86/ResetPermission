@@ -27,7 +27,6 @@
 #include <tchar.h>
 
 #include "resource.h"
-//#include "ResetPermission.h"
 
 //-------------------------------------------------------------------------
 #ifdef _UNICODE
@@ -35,3 +34,5 @@
 #else
     #define stringT std::string
 #endif
+
+#include "ResetPermission.h"
