@@ -36,6 +36,10 @@ History
            - bugfix: Add/Remove from the Explorer folder context menu did not work unless a folder was selected.
                      Fix: No folder selection is needed for that action.
 
+12/19/2016 - v1.1.7
+           - Attempt to make ResetPermission AntiVirus false-positive free by using 
+             local app data folder instead of temp and by not deleting the temp batch script
+
 TODO:
 ------
 - Check if the volume is NTFS and skip commands accordingly
@@ -56,7 +60,8 @@ static stringT STR_CMD_PAUSE         = _TEXT("pause\r\n");
 static LPCTSTR STR_CMD_ICACLS        = _TEXT("icacls ");
 static LPCTSTR STR_CMD_TAKEOWN       = _TEXT("takeown");
 static LPCTSTR STR_CMD_ATTRIB        = _TEXT("attrib");
-static LPCTSTR STR_CMD_REG           = TEXT("reg");
+static LPCTSTR STR_FOLDER_LALLOUSLAB = _TEXT("\\lallouslab");
+static LPCTSTR STR_CMD_REG           = _TEXT("reg");
 static stringT STR_NEWLINE           = _TEXT("\r\n");
 static stringT STR_NEWLINE2          = STR_NEWLINE + STR_NEWLINE;
 
@@ -128,7 +133,7 @@ bool ResetPermissionDialog::BrowseFileName(
     LPCTSTR DefaultFile, 
     stringT &out)
 {
-    TCHAR FileName[MAX_PATH * 2] = { 0 };
+    TCHAR FileName[MAX_PATH2] = { 0 };
     OPENFILENAME ofn = { 0 };
     ofn.lStructSize = sizeof(ofn);
     ofn.lpstrDefExt = Extension;
@@ -352,7 +357,7 @@ bool ResetPermissionDialog::GetFolderText(
 //-------------------------------------------------------------------------
 void ResetPermissionDialog::SetFolderText(LPCTSTR Value)
 {
-    SetDlgItemText(hDlg, IDTXT_FOLDER, Value);
+SetDlgItemText(hDlg, IDTXT_FOLDER, Value);
 }
 
 //-------------------------------------------------------------------------
@@ -360,7 +365,7 @@ void ResetPermissionDialog::InitCommand(stringT &cmd)
 {
     cmd += STR_CHECK_THE_BATCHOGRAPHY_BOOK;
 
-    LPCTSTR TempScript = GenerateTempBatchFileName();
+    LPCTSTR TempScript = GenerateWorkBatchFileName();
     if (TempScript != nullptr)
     {
         cmd += _TEXT("REM -- Temp script location: ");
@@ -436,18 +441,38 @@ void ResetPermissionDialog::UpdateCommandText()
 }
 
 //-------------------------------------------------------------------------
-LPCTSTR ResetPermissionDialog::GenerateTempBatchFileName()
+LPCTSTR ResetPermissionDialog::GenerateWorkBatchFileName()
 {
     // Make temp file name
-    static TCHAR CmdFileName[MAX_PATH * 2] = { 0 };
+    static TCHAR CmdFileName[MAX_PATH2] = { 0 };
 
     // Compute if it was not already computed
     if (CmdFileName[0] == _TCHAR('\0'))
     {
-        if (GetTempPath(_countof(CmdFileName), CmdFileName) == 0)
+        // Attempt to use local user AppData folder
+        if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, CmdFileName)))
         {
-            if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFileName, _countof(CmdFileName)) == 0)
-                return nullptr;
+            _tcsncat_s(CmdFileName, STR_FOLDER_LALLOUSLAB, _countof(CmdFileName));
+
+            // Work directory note found? Create it!
+            if (   (GetFileAttributes(CmdFileName) == INVALID_FILE_ATTRIBUTES)
+                && !CreateDirectory(CmdFileName, nullptr))
+            {
+                // Failed to create the folder. Discard the local app folder and use temp folder
+                CmdFileName[0] = _T('\0');
+            }
+        }
+
+        // Revert to temp folder if this fails
+        if (CmdFileName[0] == _TCHAR('\0'))
+        {
+            // Get temp path via the API
+            if (GetTempPath(_countof(CmdFileName), CmdFileName) == 0)
+            {
+                // Attempt to get it again via the environment variable
+                if (GetEnvironmentVariable(_TEXT("TEMP"), CmdFileName, _countof(CmdFileName)) == 0)
+                    return nullptr;
+            }
         }
 
         if (CmdFileName[_tcslen(CmdFileName) - 1] != TCHAR('\\'))
@@ -549,9 +574,9 @@ void ResetPermissionDialog::BackRestorePermissions(bool bBackup)
 //-------------------------------------------------------------------------
 bool ResetPermissionDialog::ExecuteCommand(stringT &Cmd)
 {
-    // Delete the previous temp Batch file
-    LPCTSTR CmdFileName = GenerateTempBatchFileName();
-    DeleteFile(CmdFileName);
+    //// Delete the previous temp Batch file
+    LPCTSTR CmdFileName = GenerateWorkBatchFileName();
+    //DeleteFile(CmdFileName);
 
     // Write the temp Batch file
     FILE *fp;

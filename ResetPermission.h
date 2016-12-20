@@ -1,11 +1,12 @@
 #pragma once
 
+#define MAX_PATH2 (MAX_PATH * 2)
 //-------------------------------------------------------------------------
 class ResetPermissionDialog
 {
     HINSTANCE hInstance;
     HWND hDlg;
-    TCHAR AppName[MAX_PATH * 2];
+    TCHAR AppName[MAX_PATH2];
 
     bool bRecurse;
     bool bResetPerm;
@@ -31,7 +32,7 @@ class ResetPermissionDialog
 
     bool GetCommandWindowText(stringT &Cmd);
 
-    LPCTSTR GenerateTempBatchFileName();
+    LPCTSTR GenerateWorkBatchFileName();
 
     bool ExecuteCommand(stringT &Cmd);
     bool ExecuteWindowCommand(bool bValidatePath);
