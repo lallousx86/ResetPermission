@@ -40,6 +40,9 @@ History
            - Attempt to make ResetPermission AntiVirus false-positive free by using 
              local app data folder instead of temp and by not deleting the temp batch script
 
+04/30/2017 - v1.1.8
+           - Browsing a folder will remember and focus on the previous folder
+
 TODO:
 ------
 - Check if the volume is NTFS and skip commands accordingly
@@ -89,9 +92,24 @@ static LPCTSTR STR_CHECK_THE_BATCHOGRAPHY_BOOK =
         _TEXT("\r\n");
 
 //-------------------------------------------------------------------------
+// BrowseFolder helper callback that sets the default path
+// https://www.arclab.com/en/kb/cppmfc/select-folder-shbrowseforfolder.html
+static INT CALLBACK BrowseFolderSetDefaultPathCallback(
+    HWND hwnd,
+    UINT uMsg,
+    LPARAM lp,
+    LPARAM pData)
+{
+    if (uMsg == BFFM_INITIALIZED)
+        SendMessage(hwnd, BFFM_SETSELECTION, TRUE, pData);
+
+    return 0;
+}
+
+//-------------------------------------------------------------------------
 bool ResetPermissionDialog::BrowseFolder(
-    HWND hOwner, 
-    LPCTSTR szCaption, 
+    HWND hOwner,
+    LPCTSTR szCaption,
     stringT &folderpath)
 {
     BROWSEINFO bi;
@@ -100,13 +118,18 @@ bool ResetPermissionDialog::BrowseFolder(
     bi.ulFlags = BIF_EDITBOX | BIF_VALIDATE | BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     bi.hwndOwner = hOwner;
     bi.lpszTitle = szCaption;
-
+    stringT CurFolder;
+    if (GetFolderText(CurFolder, false, false, false))
+    {
+        bi.lParam = (LPARAM)CurFolder.c_str();
+        bi.lpfn = BrowseFolderSetDefaultPathCallback;
+    }
     LPITEMIDLIST pIDL = ::SHBrowseForFolder(&bi);
 
     if (pIDL == NULL)
         return false;
 
-    TCHAR buffer[_MAX_PATH] = { '\0' };
+    TCHAR buffer[_MAX_PATH] = { 0 };
     bool bOk = ::SHGetPathFromIDList(pIDL, buffer) != 0;
 
     if (bOk)
@@ -127,10 +150,10 @@ void ResetPermissionDialog::QuotePath(stringT &Path)
 
 //-------------------------------------------------------------------------
 bool ResetPermissionDialog::BrowseFileName(
-    bool bSave, 
-    LPCTSTR Caption, 
-    LPCTSTR Extension, 
-    LPCTSTR DefaultFile, 
+    bool bSave,
+    LPCTSTR Caption,
+    LPCTSTR Extension,
+    LPCTSTR DefaultFile,
     stringT &out)
 {
     TCHAR FileName[MAX_PATH2] = { 0 };
@@ -178,7 +201,7 @@ LPCTSTR ResetPermissionDialog::GetArgs()
 
 //-------------------------------------------------------------------------
 void ResetPermissionDialog::ShowPopupMenu(
-    int IdMenu, 
+    int IdMenu,
     int IdBtnPos)
 {
     HMENU hMenu = LoadMenu(
@@ -357,7 +380,7 @@ bool ResetPermissionDialog::GetFolderText(
 //-------------------------------------------------------------------------
 void ResetPermissionDialog::SetFolderText(LPCTSTR Value)
 {
-SetDlgItemText(hDlg, IDTXT_FOLDER, Value);
+    SetDlgItemText(hDlg, IDTXT_FOLDER, Value);
 }
 
 //-------------------------------------------------------------------------
@@ -455,7 +478,7 @@ LPCTSTR ResetPermissionDialog::GenerateWorkBatchFileName()
             _tcsncat_s(CmdFileName, STR_FOLDER_LALLOUSLAB, _countof(CmdFileName));
 
             // Work directory note found? Create it!
-            if (   (GetFileAttributes(CmdFileName) == INVALID_FILE_ATTRIBUTES)
+            if ((GetFileAttributes(CmdFileName) == INVALID_FILE_ATTRIBUTES)
                 && !CreateDirectory(CmdFileName, nullptr))
             {
                 // Failed to create the folder. Discard the local app folder and use temp folder
@@ -520,7 +543,7 @@ void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
     // Confirm
     if (MessageBox(hDlg, STR_ADDREM_CTXMENU_CONFIRM, STR_CONFIRMATION, MB_YESNO | MB_ICONQUESTION) == IDNO)
         return;
-    
+
     // Execute the command
     ExecuteCommand(cmd);
 }
@@ -638,9 +661,9 @@ bool ResetPermissionDialog::ExecuteWindowCommand(bool bValidateFolder)
 
 //-------------------------------------------------------------------------
 INT_PTR CALLBACK ResetPermissionDialog::AboutDlgProc(
-    HWND hAboutDlg, 
-    UINT message, 
-    WPARAM wParam, 
+    HWND hAboutDlg,
+    UINT message,
+    WPARAM wParam,
     LPARAM lParam)
 {
     if (message == WM_INITDIALOG)
@@ -672,8 +695,8 @@ INT_PTR CALLBACK ResetPermissionDialog::s_MainDialogProc(
 
         // Associate the dialog instance with the window's user data
         SetWindowLongPtr(
-            hWnd, 
-            GWLP_USERDATA, 
+            hWnd,
+            GWLP_USERDATA,
             LONG_PTR(Dlg));
     }
     // Extract the dialog instance from the window's data
@@ -696,9 +719,9 @@ INT_PTR CALLBACK ResetPermissionDialog::s_MainDialogProc(
 
 //-------------------------------------------------------------------------
 INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
-    HWND hWnd, 
-    UINT message, 
-    WPARAM wParam, 
+    HWND hWnd,
+    UINT message,
+    WPARAM wParam,
     LPARAM lParam)
 {
     switch (message)
@@ -717,13 +740,13 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
             UpdateCheckboxes(false);
 
             HICON hIcon = LoadIcon(
-                hInstance, 
+                hInstance,
                 MAKEINTRESOURCE(IDI_SMALL));
 
             SendMessage(
-                hDlg, 
-                WM_SETICON, 
-                ICON_BIG, 
+                hDlg,
+                WM_SETICON,
+                ICON_BIG,
                 (LPARAM)hIcon);
 
             LPCTSTR Arg = GetArgs();
@@ -731,6 +754,9 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
     #ifdef _DEBUG
             if (Arg == NULL)
                 Arg = _TEXT("C:\\Temp\\perm");
+
+			// Enable editing for the folder text editbox in debug mode
+            SendDlgItemMessage(hDlg, IDTXT_FOLDER, EM_SETREADONLY, FALSE, 0);
     #endif
 
             if (Arg != NULL)
@@ -747,19 +773,24 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
 
         case WM_COMMAND:
         {
+            UINT wmId = LOWORD(wParam);
+            UINT wmEvent = HIWORD(wParam);
     #ifdef _DEBUG
             TCHAR b[1024];
             _sntprintf_s(
                 b,
                 _countof(b),
-                _TEXT("WM_COMMAND: wmParam=%08X lParam=%08X\n"),
+                _TEXT("WM_COMMAND: wmParam=%08X lParam=%08X | ID=%04X Event=%04X\n"),
                 wParam,
-                lParam);
+                lParam,
+                wmId,
+                wmEvent);
             OutputDebugString(b);
+			
+			// Reflect the folder text changes when the control is editable
+            if (wmId == IDTXT_FOLDER && wmEvent == EN_CHANGE)
+                UpdateCommandText();
     #endif
-            UINT wmId = LOWORD(wParam);
-            UINT wmEvent = HIWORD(wParam);
-
             switch (wmId)
             {
                 //
@@ -771,6 +802,7 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
                 case IDCHK_RESETPERM:
                 case IDCHK_RM_HS:
                 {
+                    // Reforumulate the command text on each option change
                     if (wmEvent == BN_CLICKED)
                     {
                         UpdateCommandText();
@@ -838,6 +870,7 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
                     ExecuteWindowCommand(true);
                     return TRUE;
                 }
+
                 // HELP button
                 case IDBTN_HELP:
                 {
@@ -851,9 +884,9 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
 
                     return TRUE;
                 }
-            }
+            } // switch(wmId)
             break;
-        }
+        } // case WM_COMMAND
 
         // Close dialog
         case WM_CLOSE:

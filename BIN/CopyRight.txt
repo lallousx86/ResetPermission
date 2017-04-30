@@ -1,7 +1,0 @@
-ResetPermission.exe (c) Elias Bachaalany <lallousz-x86@yahoo.com>
-
-This is a free utility.
-
-If you want to host this package somewhere else please include this copyright file.
-
-Check out the book: "Batchography: The Art of Batch Files Programming" -- http://lallouslab.net/2016/05/10/batchography/
