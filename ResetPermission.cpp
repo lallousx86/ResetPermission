@@ -40,15 +40,15 @@ History
            - Attempt to make ResetPermission AntiVirus false-positive free by using 
              local app data folder instead of temp and by not deleting the temp batch script
 
-04/30/2017 - v1.1.8
+04/30/2017 - v1.2.0
            - Browsing a folder will remember and focus on the previous folder
+           - Support unicode path
+           - Warn if the user is trying to reset permissions on a non-supported (or ACL-able) file system
+           - Fix: command line parsing was erroneous
+           - Fix: invoking the tool from the shell context menu was failing if the path contained space characters
 
-TODO:
-------
-- Check if the volume is NTFS and skip commands accordingly
 -------------------------------------------------------------------------*/
 
-//-------------------------------------------------------------------------
 #include "stdafx.h"
 
 //-------------------------------------------------------------------------
@@ -69,6 +69,11 @@ static stringT STR_NEWLINE           = _TEXT("\r\n");
 static stringT STR_NEWLINE2          = STR_NEWLINE + STR_NEWLINE;
 
 static LPCTSTR STR_WARNING           = _TEXT("Warning!");
+
+static LPCTSTR STR_FS_NOT_SUPPORTED_WARNING =
+        _TEXT("The selected path does not support file permissions and thus using this tool might not have any effects!\n\n")
+        _TEXT("Are you sure you want to continue?");
+
 static LPCTSTR STR_ROOT_WARNING      =
         _TEXT("You are about to change the permission of a root folder!\n")
         _TEXT("This is a **DANGEROUS** operation! It is better to choose a specific folder instead!\n\n")
@@ -90,6 +95,93 @@ static LPCTSTR STR_CHECK_THE_BATCHOGRAPHY_BOOK =
         _TEXT("REM -- Check out the book: Batchography - The Art of Batch Files Programming\r\n")
         _TEXT("REM -- http://lallouslab.net/2016/05/10/batchography/\r\n")
         _TEXT("\r\n");
+
+//-------------------------------------------------------------------------
+static bool IsSupportedFileSystem(LPCTSTR Path)
+{
+    do 
+    {
+        // Get the root path only
+        TCHAR RootPath[4];
+        _tcsncpy_s(RootPath, Path, _countof(RootPath) - 1);
+        if (_tcslen(RootPath) < 3)
+            break;
+
+        // Get the file system name
+        TCHAR FileSysName[MAX_PATH + 1];
+        if (!GetVolumeInformation(
+            RootPath,
+            nullptr,
+            0,
+            nullptr,
+            nullptr,
+            nullptr,
+            FileSysName,
+            _countof(FileSysName)))
+        {
+            break;
+        }
+
+        // Compare against supported file systems
+        return _tcscmp(FileSysName, _TEXT("NTFS")) == 0;
+    } while (false);
+
+    // If we fail to determinte the FS type, then assume we support it and
+    // let the user decide what to do
+    return true;
+}
+
+//-------------------------------------------------------------------------
+// The premise behind this function is that if we can convert a UTF-16
+// string to both UTF-8 and ASCII and they are equal then no encoding is required
+static bool ConvertUtf16ToUtf8(
+    const wchar_t *utf16_str,
+    bool *bEncodingRequired,
+    std::string *utf8_str)
+{
+    size_t utf16_len = wcslen(utf16_str);
+
+    int utf8_size = WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        utf16_str,
+        utf16_len,
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+    if (utf8_size == 0)
+        return false;
+
+    // If the UTF8 string's length is the same as the the UTF16 length
+    // then it means we did not need extra bytes to encode some UTF8 characters
+    // that are not part of the ASCII set
+    bool bNeedEncoding = utf8_size != utf16_len;
+
+    if (utf8_str != nullptr)
+    {
+        std::string buf_utf8;
+        buf_utf8.resize(utf8_size);
+
+        utf8_size = WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            utf16_str,
+            utf16_len,
+            &buf_utf8[0],
+            buf_utf8.size(),
+            nullptr,
+            nullptr);
+        if (utf8_size == 0)
+            return false;
+
+        *utf8_str = buf_utf8;
+    }
+    if (bEncodingRequired != nullptr)
+        *bEncodingRequired = bNeedEncoding;
+
+    return true;
+}
 
 //-------------------------------------------------------------------------
 // BrowseFolder helper callback that sets the default path
@@ -177,26 +269,6 @@ bool ResetPermissionDialog::BrowseFileName(
         out = ofn.lpstrFile;
 
     return bOk;
-}
-
-//-------------------------------------------------------------------------
-LPCTSTR ResetPermissionDialog::GetArgs()
-{
-    LPCTSTR szCmdLine = GetCommandLine();
-    bool bQuoted = szCmdLine[0] == _TCHAR('"');
-    if (bQuoted)
-        ++szCmdLine;
-
-    // Skip application name
-    szCmdLine += _tcslen(AppName);
-    if (bQuoted)
-        ++szCmdLine;
-
-    ++szCmdLine;
-    if (_tcslen(szCmdLine) == 0)
-        return NULL;
-    else
-        return szCmdLine;
 }
 
 //-------------------------------------------------------------------------
@@ -307,6 +379,12 @@ void ResetPermissionDialog::UpdateCheckboxes(bool bGet)
 }
 
 //-------------------------------------------------------------------------
+LPCTSTR ResetPermissionDialog::GetArg(size_t idx)
+{
+    return idx >= m_nbArgs ? nullptr : m_pArgs[idx];
+}
+
+//-------------------------------------------------------------------------
 bool ResetPermissionDialog::GetCommandWindowText(stringT &Cmd)
 {
     HWND hwndCtrl = GetDlgItem(hDlg, IDTXT_COMMAND);
@@ -353,10 +431,21 @@ bool ResetPermissionDialog::GetFolderText(
     if (len == 0)
         return false;
 
-    if (bWarnRoot && _tcslen(Path) == 3 && Path[1] == _TCHAR(':') && Path[2] == _TCHAR('\\'))
+    if (bWarnRoot)
     {
-        if (MessageBox(hDlg, STR_ROOT_WARNING, STR_WARNING, MB_YESNO | MB_ICONWARNING) == IDNO)
-            return false;
+        // Warn if resetting root permissions
+        if (_tcslen(Path) == 3 && Path[1] == _TCHAR(':') && Path[2] == _TCHAR('\\'))
+        {
+            if (MessageBox(hDlg, STR_ROOT_WARNING, STR_WARNING, MB_YESNO | MB_ICONWARNING) == IDNO)
+                return false;
+        }
+
+        // Warn if tool is used on unsupported file system
+        if (!IsSupportedFileSystem(Path))
+        {
+            if (MessageBox(hDlg, STR_FS_NOT_SUPPORTED_WARNING, STR_WARNING, MB_YESNO | MB_ICONWARNING) == IDNO)
+                return false;
+        }
     }
 
     Folder = Path;
@@ -456,8 +545,9 @@ void ResetPermissionDialog::UpdateCommandText()
         cmd += _TEXT(" -h -s ") + folder + STR_NEWLINE2;
     }
 
-    // Always add a pause
+    // Always add a pause and a new line
     cmd += STR_CMD_PAUSE;
+    cmd += STR_NEWLINE;
 
     // Update the 
     SetCommandWindowText(cmd.c_str());
@@ -530,10 +620,8 @@ void ResetPermissionDialog::AddToExplorerContextMenu(bool bAdd)
     if (bAdd)
     {
         cmd += TEXT("/ve /t REG_SZ /d \"\\\"");
-
-        cmd += AppName;
-
-        cmd += TEXT("\\\" %%1\"");
+        cmd += AppPath;
+        cmd += TEXT("\\\" \"\\\"%%1\"\\\"\"");
     }
 
     cmd += STR_NEWLINE;
@@ -597,13 +685,39 @@ void ResetPermissionDialog::BackRestorePermissions(bool bBackup)
 //-------------------------------------------------------------------------
 bool ResetPermissionDialog::ExecuteCommand(stringT &Cmd)
 {
-    //// Delete the previous temp Batch file
-    LPCTSTR CmdFileName = GenerateWorkBatchFileName();
-    //DeleteFile(CmdFileName);
+    std::string Utf8Cmd;
+#ifdef _UNICODE
+    std::string utf8_str;
+    bool bEncodingRequired;
+    if (!ConvertUtf16ToUtf8(Cmd.c_str(), &bEncodingRequired, &utf8_str))
+    {
+        MessageBox(
+            hDlg,
+            _TEXT("Failed to convert input command to UTF-8"),
+            TEXT("Error"),
+            MB_OK | MB_ICONERROR);
 
-    // Write the temp Batch file
+        return false;
+    }
+    
+    if (bEncodingRequired)
+    {
+        // 65001 = utf-8 # ref: https://msdn.microsoft.com/en-us/library/windows/desktop/dd317756(v=vs.85).aspx
+        Utf8Cmd = "CHCP 65001\r\n\r\n" + utf8_str;
+    }
+    else
+    {
+        Utf8Cmd = utf8_str;
+    }
+#else
+    Utf8Cmd = Cmd;
+#endif
+    // Overwrite/create the previous temp Batch file
+    LPCTSTR CmdFileName = GenerateWorkBatchFileName();
+
+    // Write the temp Batch file (as binary)
     FILE *fp;
-    if (_tfopen_s(&fp, CmdFileName, _TEXT("w")) != 0)
+    if (_tfopen_s(&fp, CmdFileName, _TEXT("wb")) != 0)
     {
         stringT err_msg = TEXT("Failed to write batch file to: ");
         err_msg += CmdFileName;
@@ -617,7 +731,7 @@ bool ResetPermissionDialog::ExecuteCommand(stringT &Cmd)
         return false;
     }
 
-    _ftprintf(fp, _TEXT("%s\n"), Cmd.c_str());
+    fwrite(&Utf8Cmd[0], 1, Utf8Cmd.size(), fp);
     fclose(fp);
 
     // Execute the temp batch file
@@ -656,7 +770,16 @@ bool ResetPermissionDialog::ExecuteWindowCommand(bool bValidateFolder)
     }
 
     // Execute the command
-    return ExecuteCommand(Cmd);
+    if (!ExecuteCommand(Cmd))
+    {
+        MessageBox(
+            hDlg,
+            TEXT("Failed to execute get command text"),
+            TEXT("Error"),
+            MB_OK | MB_ICONERROR);
+        return false;
+    }
+    return true;
 }
 
 //-------------------------------------------------------------------------
@@ -749,7 +872,7 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
                 ICON_BIG,
                 (LPARAM)hIcon);
 
-            LPCTSTR Arg = GetArgs();
+            LPCTSTR Arg = GetArg(1);
 
     #ifdef _DEBUG
             if (Arg == NULL)
@@ -897,6 +1020,40 @@ INT_PTR CALLBACK ResetPermissionDialog::MainDialogProc(
 }
 
 //-------------------------------------------------------------------------
+ResetPermissionDialog::ResetPermissionDialog() : m_pArgs(nullptr), m_nbArgs(0)
+{
+    int nArgs;
+    LPWSTR *szArgList = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+    if (szArgList != nullptr)
+    {
+        m_nbArgs = nArgs;
+        m_pArgs = new LPCTSTR[nArgs];
+        for (auto i = 0; i < nArgs; ++i)
+        {
+#ifdef _UNICODE
+            m_pArgs[i] = _wcsdup(szArgList[i]);
+#else
+            std::string utf8;
+            if (!ConvertUtf16ToUtf8(szArgList[i], nullptr, &utf8))
+                utf8 = "";
+            m_pArgs[i] = _strdup(utf8.c_str());
+#endif
+        }
+        // Free argument list
+        LocalFree(szArgList);
+    }
+}
+
+//-------------------------------------------------------------------------
+ResetPermissionDialog::~ResetPermissionDialog()
+{
+    for (size_t i = 0; i < m_nbArgs; ++i)
+        delete m_pArgs[i];
+
+    delete[] m_pArgs;
+}
+
+//-------------------------------------------------------------------------
 INT_PTR ResetPermissionDialog::ShowDialog(HINSTANCE hInst)
 {
     // Create new dialog instance
@@ -905,8 +1062,8 @@ INT_PTR ResetPermissionDialog::ShowDialog(HINSTANCE hInst)
     // Get current program's full path
     GetModuleFileName(
         NULL,
-        Dlg->AppName,
-        _countof(Dlg->AppName));
+        Dlg->AppPath,
+        _countof(Dlg->AppPath));
 
     Dlg->hInstance = hInst;
     return DialogBoxParam(

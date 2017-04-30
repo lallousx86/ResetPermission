@@ -6,7 +6,9 @@ class ResetPermissionDialog
 {
     HINSTANCE hInstance;
     HWND hDlg;
-    TCHAR AppName[MAX_PATH2];
+    TCHAR AppPath[MAX_PATH2];
+    size_t m_nbArgs;
+    LPCTSTR *m_pArgs;
 
     bool bRecurse;
     bool bResetPerm;
@@ -46,7 +48,7 @@ class ResetPermissionDialog
 
     void UpdateCheckboxes(bool bGet);
 
-    LPCTSTR GetArgs();
+    LPCTSTR GetArg(size_t idx);
 
     static INT_PTR CALLBACK s_MainDialogProc(
         HWND hWnd,
@@ -68,6 +70,9 @@ class ResetPermissionDialog
         stringT &out);
 
 public:
+    ResetPermissionDialog();
+    ~ResetPermissionDialog();
+
     static INT_PTR ShowDialog(HINSTANCE hInst);
 
     bool GetFolderText(

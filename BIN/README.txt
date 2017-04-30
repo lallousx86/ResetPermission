@@ -42,3 +42,9 @@ History
            - Attempt to make ResetPermission AntiVirus false-positive free by using 
              local app data folder instead of temp and by not deleting the temp batch script
 
+04/30/2017 - v1.2.0
+           - Browsing a folder will remember and focus on the previous folder
+           - Support unicode path
+           - Warn if the user is trying to reset permissions on a non-supported (or ACL-able) file system
+           - Fix: command line parsing was erroneous
+           - Fix: invoking the tool from the shell context menu was failing if the path contained space characters
